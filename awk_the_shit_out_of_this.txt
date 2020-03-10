@@ -1,0 +1,114 @@
+Soo...new detective work. I need to find all the images that correspond
+to the entried in the data analyzed. I have the data entries with the
+info of the sample (replicate, measurement, day, sample, image). 
+
+An example of a file name is:
+> R1D12-1_A_20X.TIF
+
+And follows the convention:
+> ReplicateDay-measurement-sample_image_extra.TIF
+
+Using awk, I intend to create a file that links the image (or at least
+the basename) to a sample group (genotype/day/treatment/tissue) to then
+perform a search within the folders and gather the files ready for
+submission.
+
+
+How deep is your (search) love?
+
+find . -iname *.tif | wc -l 
+##Number of tif or TIF files in every subdirectory
+find . -mindepth 1 -type d | wc -l # Counts all subdirectories within a directory
+
+
+
+find . -iname R2D13-2_B*
+
+
+First - reformat the data.
+Somehow, the file has a special character for line breaks (looks like ^M) which is a carriage return (<ctrl+v;ctrl+m>) used by windows/DOS and not recognized by unix. Change them in vim with:
+
+> :%s/^M/\r/g
+(the special character is achieved by typing <ctrl+v;ctrl+m> it'll appear blue). 
+
+
+awk 'BEGIN {OFS="\t";FS="\t";a=0;print "figure_basename","group_sample","group"} NR> 1 {a+=1; print $1=a,$2="R"$1"D"$3"-"$2"_"$4,$3="R"$1"_"$6"_"$7"_D"$3,$4=$6"_"$7"_D"$3}' Root_Cross_Section_Diameter_2_3_cm_from_tip_reps2thru5.txt  | head
+
+The final line of code will be
+
+awk 'BEGIN {OFS="\t";FS="\t";a=0;print "figure_basename","group_sample","group"} NR> 1 {print $2="R"$1"D"$3"-"$2"_"$5,$3="R"$1"_"$6"_"$7"_D"$3,$4=$6"_"$7"_D"$3}' Root_Cross_Section_Diameter_2_3_cm_from_tip_reps2thru5.txt
+
+
+awk 'BEGIN {OFS="\t";FS="\t";a=0} NR> 1 {print }' Root_Cross_Section_Diameter_2_3_cm_from_tip_reps2thru5.txt  
+
+awk 'BEGIN {OFS="\t";FS="\t"} NR==2 {system("find ~/Desktop/CO2/Solanum_eCO2_fullAnalysis/submission_figures_data/figures/Data_CrossSections_ByRep -iname " $1"*")}' figurebasenames_to_samples.txt 
+/Users/jrm/Desktop/CO2/Solanum_eCO2_fullAnalysis/submission_figures_data/figures/Data_CrossSections_ByRep/rep 2/Rep 2 Root Cross Sections/14JAN2014/R2D13-2_B_40X.TIF
+
+### To call a bash function within the line
+awk 'BEGIN {OFS="\t";FS="\t"} NR>1 {system("find ~/Desktop/CO2/Solanum_eCO2_fullAnalysis/submission_figures_data/figures/Data_CrossSections_ByRep -iname " $1"*")}' figurebasenames_to_samples.txt
+
+### Putting things together
+
+awk 'BEGIN {OFS="\t";FS="\t";a=0;print "figure_basename\tgroup_sample\tgroup"} NR>2 {
+	a+=1; figure_basename="R"$1"D"$3"-"$4"_"$5; sample_name="R"$1"_"$6"_"$7"_D"$3; sample_group=$6"_"$7"_D"$3; "find ~/Desktop/CO2/Solanum_eCO2_fullAnalysis/submission_figures_data/figures/Data_CrossSections_ByRep -iname " figure_basename"*" | getline path; print figure_basename,path}' Root_Cross_Section_Diameter_2_3_cm_from_tip_reps2thru5.txt
+
+#add > if($1 == "3") {gsub(13,12,$3)}
+## to fix D13 to D12 in rep3 samples
+
+
+### First block is finished
+##########################################
+
+### Set up a directory to do the search
+pathToImg=~/Desktop/CO2/Solanum_eCO2_fullAnalysis/submission_figures_data/figures/Data_CrossSections_ByRep
+
+awk -v quote="'" 'BEGIN {OFS="\t";FS="\t";a=0;print "sample_name\tsample_group\tfigure_basename\tpath"} 
+NR==1 {
+			path="empty";
+			if($1 == "3") {gsub(13,12,$3)}
+			a+=1; 
+			figure_basename="R"$1"D"$3"[-_]"$4"_"$5; 
+			sample_name="R"$1"_"$6"_"$7"_D"$3; 
+			sample_group=$6"_"$7"_D"$3; 
+			comm="find '$pathToImg' -iname " figure_basename"*"; 
+			comm | getline path;  close(comm); 
+			
+			print sample_name,sample_group,figure_basename,quote path quote}' Root_Cross_Section_Diameter_2_3_cm_from_tip_reps2thru5.txt | head > out.test.txt
+
+
+
+
+pathToImg=~/Desktop/CO2/Solanum_eCO2_fullAnalysis/submission_figures_data/figures/Data_CrossSections_ByRep
+
+awk -v quote="'" 'BEGIN {OFS="\t";FS="\t";a=0;print "figure_basename\tgroup_sample\tgroup"} NR>1 {
+path="empty";
+if($1 == "3") {gsub(13,12,$3)}
+a+=1; figure_basename="R"$1"D"$3"[-_]"$4"_"$5; sample_name="R"$1"_"$6"_"$7"_D"$3; sample_group=$6"_"$7"_D"$3; comm="find '$pathToImg' -iname " figure_basename"* | head"; comm | getline path;  close(comm); print figure_basename,quotepathquote};' Root_Cross_Section_Diameter_2_3_cm_from_tip_reps2thru5.txt
+
+
+
+### Parse output, copy the file as is to a raw folder and create a soft link to the image with the sample name
+##########################################
+
+mkdir RawImages
+mkdir Images
+
+
+awk 'BEGIN {OFS=" ";FS="\t";a=0;} NR==2 { b="cp "$4" RawImages/"; print b; system(b)}' out.test.txt
+
+awk 'BEGIN {OFS=" ";FS="\t";a=0;} NR==2 { b="cp "$4" RawImages/"; print b;}' 
+### Create a bash script to copy the files
+awk 'BEGIN {OFS=" ";FS="\t";a=0;
+				print "#!/bin/sh"
+				} 
+			NR>1 { 
+			print "cp",$4,"RawImages/";
+			print "cp",$4,"Images/"$1".TIF"
+			}' out.test.txt > test.sh
+
+
+
+
+
+
+
